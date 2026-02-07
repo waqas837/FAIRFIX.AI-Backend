@@ -1,0 +1,612 @@
+// FAIRFIX.AI — PostgreSQL schema (M1)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Users & app ---
+model User {
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  passwordHash         String?
+  firstName            String?
+  lastName             String?
+  phone                String?
+  role                 String    @default("customer") // customer | shop_owner | expert | admin
+  profilePhoto         String?
+  dateOfBirth          DateTime?
+  address              String?
+  city                 String?
+  state                String?
+  zipCode              String?
+  emergencyContactName String?
+  emergencyContactPhone String?
+  preferences          Json?     // bluetooth, location, notifications
+  notificationPreferences Json?  // daily reminder windows, etc.
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  vehicles             Vehicle[]
+  cases                Case[]
+  subscriptions        Subscription[]
+  repairHistory        Repair[]
+  expertCalls          ExpertCall[]
+  ownedShops           Shop[]
+  orders               Order[]
+  towingRequests       TowingRequest[]
+  alerts               Alert[]
+  shopReviews          ShopReview[]
+  notifications        Notification[]
+  supportTickets       SupportTicket[]
+  disputes             Dispute[]
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 String    // GOLD | PLATINUM
+  status               String    @default("active") // active | cancelled | expired
+  nextBillingAt        DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  @@index([userId])
+}
+
+model Vehicle {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vin         String?
+  plateNumber String?
+  make        String?
+  model       String?
+  year        Int?
+  mileage     Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  cases       Case[]
+  scans       DiagnosticScan[]
+  repairs     Repair[]
+  @@index([userId])
+}
+
+// --- Case state machine (client: no skip/jump; full list below) ---
+model Case {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+  shopId    String?
+  shop      Shop?    @relation(fields: [shopId], references: [id])
+  // state: CASE_CREATED | DECISION_PAUSE_ACTIVE | VERIFYING | VERIFIED_WITH_UNKNOWNS |
+  //        INSTALL_WINDOW_PROPOSED | INSTALL_WINDOW_ACCEPTED | DECISION_LOCKED |
+  //        VENDOR_AVAIL_CONFIRMED | SHOP_WINDOW_CONFIRMED | SHOP_APPOINTMENT_LOCKED |
+  //        SHIP_TRIGGERED | IN_TRANSIT | DELIVERED | INSTALL_IN_PROGRESS | INSTALLED |
+  //        POST_CONFIRMATION_COMPLETE | EXCEPTION_*
+  state     String   @default("CASE_CREATED")
+  // Job workflow (shop view): intake | awaiting_approval | in_progress | completed
+  jobStatus           String?
+  diagnosticSummary   Json?    // DTCs, Monica notes
+  recommendedParts    Json?    // parts + labor hours
+  laborEstimateHours  Float?
+  vehicleArrivalAt    DateTime?
+  vehiclePhotos       Json?
+  partsArrivalAt      DateTime?
+  additionalRepairs   Json?    // request for customer approval
+  completedAt         DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  installWindows    InstallWindow[]
+  decisionLocks     DecisionLock[]
+  decisionReceipts  DecisionReceipt[]
+  vendorCommitments VendorFulfillmentCommitment[]
+  appointments      Appointment[]
+  shipments         Shipment[]
+  custodyEvents     CustodyEvent[]
+  exceptions        CaseException[]
+  disputes          Dispute[]
+  orders            Order[]
+  @@index([userId])
+  @@index([shopId])
+  @@index([state])
+}
+
+model InstallWindow {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  startAt   DateTime
+  endAt     DateTime
+  status    String   @default("proposed") // proposed | accepted | rejected
+  acceptedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([caseId])
+}
+
+model DecisionLock {
+  id                String   @id @default(cuid())
+  caseId            String
+  case              Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  verifiedFacts     Json     // array
+  unknowns          Json     // array
+  remainingRisks    Json     // array
+  partsStrategy     String   @default("STATE_A_SUPPLIER_CUSTODY")
+  installWindowStart DateTime
+  installWindowEnd   DateTime
+  consentData       Json     // checkboxes, etc.
+  clientIp          String?
+  deviceInfo        String?
+  version           String?
+  auditHash         String   // immutable
+  createdAt         DateTime @default(now())
+  receipt           DecisionReceipt?
+  @@unique([caseId])
+  @@index([caseId])
+}
+
+model DecisionReceipt {
+  id             String   @id @default(cuid())
+  caseId         String
+  case           Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  decisionLockId String   @unique
+  decisionLock   DecisionLock @relation(fields: [decisionLockId], references: [id])
+  verifiedFacts  Json
+  risksAccepted  Json
+  unknowns       Json
+  timingPlan     Json
+  legalRefs      Json?
+  signedAt       DateTime @default(now())
+  auditHash      String
+  createdAt      DateTime @default(now())
+  @@index([caseId])
+}
+
+// --- Vendor & shop ---
+model Vendor {
+  id   String @id @default(cuid())
+  name String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  commitments VendorFulfillmentCommitment[]
+}
+
+model VendorFulfillmentCommitment {
+  id              String    @id @default(cuid())
+  caseId          String
+  case            Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  vendorId        String
+  vendor          Vendor    @relation(fields: [vendorId], references: [id])
+  sku             String
+  quantity        Int
+  available       Boolean
+  leadTimeMinDays Int?
+  leadTimeMaxDays Int?
+  serviceLevel    String?
+  cutoffTime      DateTime?
+  backorderRisk   Boolean   @default(false)
+  validUntil      DateTime
+  confirmationRef String?
+  createdAt       DateTime  @default(now())
+  @@index([caseId])
+  @@index([vendorId])
+}
+
+model Shop {
+  id                    String   @id @default(cuid())
+  userId                String?  @unique // owner (shop_owner)
+  user                  User?    @relation(fields: [userId], references: [id])
+  name                  String
+  phone                 String?
+  address               String?
+  description           String?
+  lat                   Float?
+  lng                   Float?
+  rating                Float?
+  languages             String?
+  priceRange            String?  // $ | $$ | $$$
+  status                String?  // pending_review | approved
+  tier                  String?  // Silver | Gold | Platinum
+  numberOfBays           Int?
+  operatingHours        String?
+  dailyCapacity         Int?
+  laborChargePerHour    Float?
+  emergencyContactName  String?
+  emergencyContactNumber String?
+  specializations       String?
+  languagesSpoken       String?
+  certifications        String?
+  stripeAccountId       String?
+  coverPhotoUrl          String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  capacityWindows       CapacityWindow[]
+  appointments          Appointment[]
+  cases                 Case[]
+  documents             ShopDocument[]
+  reviews               ShopReview[]
+  disputes              Dispute[]
+  transactions          Transaction[]
+  notifications         Notification[]
+  changeRequests        ChangeRequest[]
+  supportTickets        SupportTicket[]
+  orders                Order[]
+  @@index([userId])
+}
+
+model CapacityWindow {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  earliestAt   DateTime
+  latestAt     DateTime
+  constraints  Json?    // hours, bay type, drop-off rules
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([shopId])
+}
+
+model ShopDocument {
+  id         String    @id @default(cuid())
+  shopId     String
+  shop       Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type       String    // business_license | resale_certificate | insurance | tax_id | owner_id
+  fileUrl    String
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([shopId])
+}
+
+model ShopReview {
+  id        String   @id @default(cuid())
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int      // 1-5
+  reviewText String?
+  createdAt DateTime @default(now())
+  @@index([shopId])
+  @@index([userId])
+}
+
+model Appointment {
+  id              String   @id @default(cuid())
+  caseId          String
+  case            Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id])
+  decisionLockId  String?  // required for lock (client gate: no appointment without decision_lock)
+  slotStart       DateTime
+  slotEnd         DateTime
+  status          String   @default("locked") // locked | completed | cancelled
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([caseId])
+  @@index([shopId])
+}
+
+// --- Shipment & custody ---
+model Shipment {
+  id            String   @id @default(cuid())
+  caseId        String
+  case          Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  state         String   @default("draft") // draft | SHIP_TRIGGERED | IN_TRANSIT | DELIVERED
+  trackingNumber String?
+  carrierWebhookRegistered Boolean @default(false)
+  alertsEnabled Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  custodyEvents CustodyEvent[]
+  @@index([caseId])
+}
+
+model CustodyEvent {
+  id           String   @id @default(cuid())
+  caseId       String
+  case         Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  shipmentId   String?
+  shipment     Shipment? @relation(fields: [shipmentId], references: [id])
+  custody      String   // SUPPLIER_CUSTODY | CARRIER_CUSTODY | SHOP_CUSTODY | CUSTOMER_CUSTODY
+  occurredAt   DateTime @default(now())
+  proofRef     String?
+  declaredValue Float?
+  insuranceRef String?
+  @@index([caseId])
+  @@index([shipmentId])
+}
+
+model CaseException {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  type      String   // VENDOR_DELAY | BACKORDER | CARRIER_EXCEPTION | MISSED_WINDOW | APPT_MOVED | DAMAGED | CANCELLED
+  payload   Json?
+  createdAt DateTime @default(now())
+  @@index([caseId])
+}
+
+model Dispute {
+  id          String   @id @default(cuid())
+  caseId      String
+  case        Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  userId      String   // customer
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issueType   String   // Quality of Work | Incorrect Diagnosis
+  description String?
+  status      String   @default("open") // open | under_review | resolved
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  events      DisputeEvent[]
+  @@index([caseId])
+  @@index([shopId])
+  @@index([userId])
+}
+
+model DisputeEvent {
+  id        String   @id @default(cuid())
+  disputeId String
+  dispute   Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  type      String   // opened | evidence_uploaded | mediation_proposal | resolved | etc.
+  payload   Json?
+  createdAt DateTime @default(now())
+  @@index([disputeId])
+}
+
+// --- Orders (DIY parts + mechanic shop) ---
+model Order {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleId             String?
+  caseId                String?
+  case                  Case?     @relation(fields: [caseId], references: [id])
+  shopId                String?
+  shop                  Shop?     @relation(fields: [shopId], references: [id])
+  status                String   @default("cart") // cart | placed | paid | processing | shipped | delivered
+  deliveryMethod        String?
+  totalCents             Int?
+  stripePaymentIntentId  String?
+  placedAt               DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  items                 OrderItem[]
+  @@index([userId])
+  @@index([caseId])
+  @@index([shopId])
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  partName   String?
+  partNumber String?
+  quantity   Int     @default(1)
+  priceCents Int
+  @@index([orderId])
+}
+
+// --- Towing ---
+model TowingRequest {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pickupAddress     String
+  dropoffAddress    String?
+  vehicleYear       Int?
+  vehicleMake       String?
+  vehicleModel      String?
+  vehicleColor      String?
+  licensePlate      String?
+  status            String    @default("requested") // requested | accepted | en_route | picked_up | delivered | cancelled
+  driverName        String?
+  driverPhone       String?
+  estimatedArrivalAt DateTime?
+  requestedAt       DateTime  @default(now())
+  @@index([userId])
+}
+
+// --- Alerts (customer vehicle alerts / history) ---
+model Alert {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleId String?
+  type      String?  // e.g. cylinder_misfire, oil_change
+  title     String
+  message   String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([vehicleId])
+}
+
+// --- App: diagnostics, repairs, experts ---
+model DiagnosticScan {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  status      String   @default("running") // running | completed | failed
+  codes       Json?    // DTCs
+  report      Json?
+  scannedAt   DateTime @default(now())
+  @@index([vehicleId])
+}
+
+model Repair {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  issue       String?
+  status      String   @default("active") // active | completed | cancelled
+  shopName    String?
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  @@index([userId])
+  @@index([vehicleId])
+}
+
+model Expert {
+  id                    String   @id @default(cuid())
+  userId                String?  @unique // link to User for login/settings
+  name                  String
+  email                 String?
+  phone                 String?
+  title                 String?
+  rating                Float?
+  callsCompleted        Int      @default(0)
+  status                String   @default("ACTIVE") // ACTIVE | UNAVAILABLE
+  // profile & onboarding
+  streetAddress         String?
+  city                  String?
+  stateProvince         String?
+  zipPostalCode         String?
+  country               String?
+  skills                Json?    // array of strings
+  languages             Json?    // array of strings
+  introVideoUrl          String?
+  workspacePhotoUrl     String?
+  stripeAccountId       String?
+  bankAccountHolder     String?
+  bankName              String?
+  bankAccountLast4      String?
+  onboardingStatus      String?  // in_progress | complete
+  govIdVerifiedAt       DateTime?
+  selfieVerifiedAt      DateTime?
+  addressVerifiedAt     DateTime?
+  credentialsVerifiedAt DateTime?
+  licenseVerifiedAt     DateTime?
+  // availability
+  isOnline              Boolean? @default(false)
+  weeklySchedule        Json?    // [{ day, from, to }]
+  avgResponseMinutes    Float?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  calls                 ExpertCall[]
+  trainingCompletions   ExpertTrainingCompletion[]
+  transactions          Transaction[]
+  notifications         Notification[]
+  changeRequests        ChangeRequest[]
+  supportTickets        SupportTicket[]
+}
+
+model ExpertCall {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId    String
+  expert      Expert   @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  vehicleId   String?
+  type        String   // instant | scheduled
+  cost        Float?
+  rating      Int?
+  feedback    String?  // customer quote
+  amountEarned Float?
+  notes       String?  // expert call notes
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdAt   DateTime @default(now())
+  @@index([userId])
+  @@index([expertId])
+}
+
+model TrainingVideo {
+  id             String   @id @default(cuid())
+  title          String
+  durationSeconds Int?
+  videoUrl       String?
+  sortOrder      Int      @default(0)
+  completions    ExpertTrainingCompletion[]
+}
+
+model ExpertTrainingCompletion {
+  id              String   @id @default(cuid())
+  expertId        String
+  expert          Expert   @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  trainingVideoId String
+  trainingVideo   TrainingVideo @relation(fields: [trainingVideoId], references: [id], onDelete: Cascade)
+  completedAt     DateTime @default(now())
+  @@unique([expertId, trainingVideoId])
+  @@index([expertId])
+}
+
+model Transaction {
+  id             String   @id @default(cuid())
+  shopId         String?
+  shop           Shop?    @relation(fields: [shopId], references: [id])
+  expertId       String?
+  expert         Expert?  @relation(fields: [expertId], references: [id])
+  type           String   // expert_call | payout | job_payout | etc.
+  amountCents    Int
+  status         String   @default("pending") // pending | completed | transferred | failed
+  referenceType   String?  // expert_call | case | order | etc.
+  referenceId     String?
+  stripePayoutId String?
+  createdAt      DateTime @default(now())
+  @@index([shopId])
+  @@index([expertId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId    String?
+  shop      Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  expertId  String?
+  expert    Expert?  @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([shopId])
+  @@index([expertId])
+}
+
+model ChangeRequest {
+  id             String   @id @default(cuid())
+  requestableType String   // shop | expert
+  requestableId   String   // shopId | expertId
+  shopId          String?
+  shop            Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  expertId        String?
+  expert          Expert?  @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  type            String   // profile | bank | compliance
+  reason          String?
+  description     String?
+  status          String   @default("pending") // pending | approved | rejected
+  createdAt       DateTime @default(now())
+  @@index([shopId])
+  @@index([expertId])
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shopId      String?
+  shop        Shop?    @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  expertId    String?
+  expert      Expert?  @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  subject     String
+  description String?
+  status      String   @default("open")
+  createdAt   DateTime @default(now())
+  @@index([userId])
+  @@index([shopId])
+  @@index([expertId])
+}
