@@ -42,6 +42,10 @@ model User {
   notifications        Notification[]
   supportTickets       SupportTicket[]
   disputes             Dispute[]
+  consentLogs          ConsentLog[]
+  dataRequests         DataRequest[]
+  refreshTokens        RefreshToken[]
+  auditLogs            AuditLog[]
 }
 
 model Subscription {
@@ -62,7 +66,8 @@ model Vehicle {
   id          String    @id @default(cuid())
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vin         String?
+  vin         String?   // NOTE: Must be hashed at rest before storage (compliance requirement)
+  vinHash     String?   // Hashed VIN for compliance (CCPA/PIPEDA/GDPR)
   plateNumber String?
   make        String?
   model       String?
@@ -74,6 +79,7 @@ model Vehicle {
   scans       DiagnosticScan[]
   repairs     Repair[]
   @@index([userId])
+  @@index([vinHash])
 }
 
 // --- Case state machine (client: no skip/jump; full list below) ---
@@ -344,12 +350,14 @@ model Dispute {
   issueType   String   // Quality of Work | Incorrect Diagnosis
   description String?
   status      String   @default("open") // open | under_review | resolved
+  retentionUntil DateTime? // Retain evidence only when necessary (compliance)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   events      DisputeEvent[]
   @@index([caseId])
   @@index([shopId])
   @@index([userId])
+  @@index([retentionUntil])
 }
 
 model DisputeEvent {
@@ -426,9 +434,11 @@ model Alert {
   title     String
   message   String?
   read      Boolean  @default(false)
+  retentionUntil DateTime? // Auto-purge after this date (compliance)
   createdAt DateTime @default(now())
   @@index([userId])
   @@index([vehicleId])
+  @@index([retentionUntil])
 }
 
 // --- App: diagnostics, repairs, experts ---
@@ -440,7 +450,9 @@ model DiagnosticScan {
   codes       Json?    // DTCs
   report      Json?
   scannedAt   DateTime @default(now())
+  retentionUntil DateTime? // Auto-purge after this date (compliance)
   @@index([vehicleId])
+  @@index([retentionUntil])
 }
 
 model Repair {
@@ -515,11 +527,14 @@ model ExpertCall {
   feedback    String?  // customer quote
   amountEarned Float?
   notes       String?  // expert call notes
+  recordingUrl String? // Call recording (limited retention)
   startedAt   DateTime?
   endedAt     DateTime?
+  retentionUntil DateTime? // Auto-purge recording/data after this date (compliance)
   createdAt   DateTime @default(now())
   @@index([userId])
   @@index([expertId])
+  @@index([retentionUntil])
 }
 
 model TrainingVideo {
@@ -605,8 +620,78 @@ model SupportTicket {
   subject     String
   description String?
   status      String   @default("open")
+  retentionUntil DateTime? // Auto-purge after this date (compliance)
   createdAt   DateTime @default(now())
   @@index([userId])
   @@index([shopId])
   @@index([expertId])
+  @@index([retentionUntil])
+}
+
+// --- Privacy & Compliance (CCPA/PIPEDA/GDPR) ---
+
+model ConsentLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose     String   // diagnostic_data | call_recording | monica_monitoring | ai_summary | post_repair_verification
+  version     String   // Version of legal text/terms at time of consent
+  consented   Boolean  @default(true) // true = granted, false = withdrawn
+  clientIp    String?
+  deviceInfo  String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  @@index([userId])
+  @@index([purpose])
+  @@index([createdAt])
+}
+
+model DataRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // export | delete
+  status      String   @default("pending") // pending | processing | completed | failed
+  fulfilledAt DateTime?
+  exportUrl   String?  // For export requests: temporary download URL
+  errorMessage String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String   // e.g. login, data_export, data_delete, consent_change, sensitive_read
+  resourceType String? // user | vehicle | case | expert_call | etc.
+  resourceId   String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?    // Additional context
+  createdAt   DateTime @default(now())
+  @@index([userId])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
+
+// --- Authentication (JWT refresh tokens) ---
+
+model RefreshToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String   @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
 }

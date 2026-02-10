@@ -1,11 +1,12 @@
 const { prisma } = require('../config/database');
+const { maskPhone } = require('../utils/compliance');
 
 /**
  * GET /users/me — current user profile (customer/shop_owner/expert).
  */
 async function getMe(req, res, next) {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.id || req.userId;
     if (!userId) {
       return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
     }
@@ -38,7 +39,14 @@ async function getMe(req, res, next) {
       return res.status(404).json({ success: false, error: { message: 'User not found' } });
     }
 
-    res.json({ success: true, data: user });
+    // Mask phone numbers for privacy compliance
+    const maskedUser = {
+      ...user,
+      phone: maskPhone(user.phone),
+      emergencyContactPhone: maskPhone(user.emergencyContactPhone)
+    };
+
+    res.json({ success: true, data: maskedUser });
   } catch (err) {
     next(err);
   }

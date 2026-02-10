@@ -1,5 +1,6 @@
 const express = require('express');
 const { authenticate } = require('../middleware/auth');
+const { apiLimiter } = require('../middleware/rateLimit');
 
 const userRoutes = require('./userRoutes');
 const vehicleRoutes = require('./vehicleRoutes');
@@ -14,14 +15,38 @@ const orderRoutes = require('./orderRoutes');
 const expertCallRoutes = require('./expertCallRoutes');
 const towingRoutes = require('./towingRoutes');
 const termsRoutes = require('./termsRoutes');
+const consentRoutes = require('./consentRoutes');
+const dataRequestRoutes = require('./dataRequestRoutes');
 
 const router = express.Router();
 
-router.use(authenticate);
+// Apply rate limiting to all routes
+router.use(apiLimiter);
 
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ */
 router.get('/health', (req, res) => {
   res.json({ success: true, message: 'OK', timestamp: new Date().toISOString() });
 });
+
+// Authentication routes (public)
+const authRoutes = require('./auth');
+router.use('/auth', authRoutes);
+
+// Admin login (public, before auth middleware)
+const adminRoutes = require('./adminRoutes');
+router.use('/admin', adminRoutes);
+
+// All other routes require authentication
+router.use(authenticate);
 
 router.use('/terms', termsRoutes);
 router.use('/users', userRoutes);
@@ -36,5 +61,7 @@ router.use('/alerts', alertRoutes);
 router.use('/orders', orderRoutes);
 router.use('/expert-calls', expertCallRoutes);
 router.use('/towing', towingRoutes);
+router.use('/consent', consentRoutes);
+router.use('/data-requests', dataRequestRoutes);
 
 module.exports = router;
