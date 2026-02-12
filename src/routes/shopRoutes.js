@@ -1,5 +1,6 @@
 const express = require('express');
-const { list, getById, getReviews } = require('../controllers/shopController');
+const { list, getById, getReviews, addCapacityWindow } = require('../controllers/shopController');
+const { authenticate, requireUser } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -50,5 +51,22 @@ const router = express.Router();
 router.get('/', list);
 router.get('/:id', getById);
 router.get('/:id/reviews', getReviews);
+/**
+ * @swagger
+ * /shops/{id}/capacity-window:
+ *   post:
+ *     summary: Add shop capacity window (earliest/latest + constraints)
+ *     tags: [Shops]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: string }, description: Shop ID }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema: { type: object, required: [earliestAt, latestAt], properties: { earliestAt: { type: string, format: date-time }, latestAt: { type: string, format: date-time }, constraints: {} } }
+ *     responses:
+ *       201: { description: Capacity window created }
+ */
+router.post('/:id/capacity-window', authenticate, requireUser, addCapacityWindow);
 
 module.exports = router;

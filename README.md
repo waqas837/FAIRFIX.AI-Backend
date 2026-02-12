@@ -249,6 +249,8 @@ Case state machine, install window, decision lock, vendor commitments, shipment/
 | `npm run db:migrate` | Run migrations |
 | `npm run db:push` | Push schema to DB (dev) |
 | `npm run db:studio` | Open Prisma Studio |
+| `node scripts/create-admin.js [email] [password]` | Create or update admin user |
+| `node scripts/seed-shops.js` | Seed 3 approved shops for testing Case flow (vehicle + shop selection) |
 
 ## Architecture Notes
 

@@ -17,6 +17,8 @@ const towingRoutes = require('./towingRoutes');
 const termsRoutes = require('./termsRoutes');
 const consentRoutes = require('./consentRoutes');
 const dataRequestRoutes = require('./dataRequestRoutes');
+const vendorRoutes = require('./vendorRoutes');
+const shipmentRoutes = require('./shipmentRoutes');
 
 const router = express.Router();
 
@@ -45,6 +47,10 @@ router.use('/auth', authRoutes);
 const adminRoutes = require('./adminRoutes');
 router.use('/admin', adminRoutes);
 
+// Shipment carrier webhook (public - called by carrier)
+const { carrierExceptionWebhook } = require('../controllers/shipmentController');
+router.post('/shipments/webhook/carrier-exception', carrierExceptionWebhook);
+
 // All other routes require authentication
 router.use(authenticate);
 
@@ -63,5 +69,7 @@ router.use('/expert-calls', expertCallRoutes);
 router.use('/towing', towingRoutes);
 router.use('/consent', consentRoutes);
 router.use('/data-requests', dataRequestRoutes);
+router.use('/vendor', vendorRoutes);
+router.use('/shipments', shipmentRoutes);
 
 module.exports = router;

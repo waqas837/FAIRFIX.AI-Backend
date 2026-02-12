@@ -116,4 +116,42 @@ async function getReviews(req, res, next) {
   }
 }
 
-module.exports = { list, getById, getReviews };
+/**
+ * POST /shops/:id/capacity-window — add a capacity window (earliest/latest + constraints).
+ * Body: { earliestAt, latestAt, constraints? }
+ */
+async function addCapacityWindow(req, res, next) {
+  try {
+    const userId = req.user?.id;
+    const { id: shopId } = req.params;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+    }
+    const shop = await prisma.shop.findUnique({
+      where: { id: shopId },
+    });
+    if (!shop) {
+      return res.status(404).json({ success: false, error: { message: 'Shop not found' } });
+    }
+    const { earliestAt, latestAt, constraints } = req.body || {};
+    if (!earliestAt || !latestAt) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'earliestAt and latestAt (ISO dates) required' },
+      });
+    }
+    const window = await prisma.capacityWindow.create({
+      data: {
+        shopId,
+        earliestAt: new Date(earliestAt),
+        latestAt: new Date(latestAt),
+        constraints: constraints || null,
+      },
+    });
+    res.status(201).json({ success: true, data: window });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { list, getById, getReviews, addCapacityWindow };

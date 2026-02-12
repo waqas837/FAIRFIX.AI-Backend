@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-super-secret-refresh-key-change-in-production';
@@ -19,13 +20,14 @@ function generateToken(userId) {
 }
 
 /**
- * Generate JWT refresh token
+ * Generate JWT refresh token (unique per issuance via jti to avoid DB unique constraint)
  * @param {string} userId - User ID
  * @returns {string} Refresh token
  */
 function generateRefreshToken(userId) {
+  const jti = crypto.randomBytes(16).toString('hex');
   return jwt.sign(
-    { userId },
+    { userId, jti },
     JWT_REFRESH_SECRET,
     { expiresIn: JWT_REFRESH_EXPIRES_IN }
   );

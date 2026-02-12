@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./src/config/swagger');
 const routes = require('./src/routes');
@@ -11,6 +12,13 @@ const { errorHandler } = require('./src/middleware');
 const { scheduleRetentionPurge } = require('./src/jobs/retention');
 
 const app = express();
+
+// CORS: allow frontend (e.g. Next.js on port 3001)
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:3001',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Body parser with error handling
 app.use(express.json({ limit: '10mb' }));

@@ -30,6 +30,10 @@
  *     description: Shop endpoints
  *   - name: Cases
  *     description: Case management endpoints
+ *   - name: Vendor
+ *     description: Vendor availability confirmation
+ *   - name: Shipments
+ *     description: Shipment and custody endpoints
  *   - name: Experts
  *     description: Expert endpoints
  *   - name: Scans
