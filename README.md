@@ -117,11 +117,11 @@ backend/
 
 Server runs at `http://localhost:3000` (or `PORT` from env).
 
-## API (M1 – read endpoints)
+## API
 
-Base URL: `http://localhost:3000/api`
+Base URL: `http://localhost:3000/api/v1`
 
-**Auth (M1):** For “current user” endpoints, send **`x-user-id: <userCuid>`** in the request header. Optional: `x-api-key` or `?apiKey=` as user id. If `REQUIRE_AUTH=true` in env, requests without user id or api key return 401.
+**Authentication:** Protected routes use **JWT Bearer tokens** only. Do not use header-based identity (`x-user-id`, `x-api-key`, or `?apiKey=`). (1) Login or register via `POST /auth/register` or `POST /auth/login` to receive `token` and optionally `refreshToken`. (2) Call protected endpoints with header `Authorization: Bearer <token>`. (3) Use `POST /auth/refresh` to get a new access token when it expires. Swagger at `http://localhost:3000/api-docs` uses the same Bearer auth (use **Authorize** to set the token).
 
 ### Authentication Endpoints
 
@@ -250,7 +250,7 @@ Case state machine, install window, decision lock, vendor commitments, shipment/
 | `npm run db:push` | Push schema to DB (dev) |
 | `npm run db:studio` | Open Prisma Studio |
 | `node scripts/create-admin.js [email] [password]` | Create or update admin user |
-| `node scripts/seed-shops.js` | Seed 3 approved shops for testing Case flow (vehicle + shop selection) |
+| `node scripts/seed-shops.js` | Seed 3 approved shops for trying the Case flow (vehicle + shop selection) |
 
 ## Architecture Notes
 

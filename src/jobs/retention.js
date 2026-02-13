@@ -20,7 +20,7 @@ const RETENTION_PERIODS = {
 };
 
 /**
- * Purge expired diagnostic scans
+ * Purge expired diagnostic scans (retentionUntil in the past, or no retentionUntil and createdAt past policy)
  */
 async function purgeDiagnosticScans() {
   try {
@@ -29,9 +29,10 @@ async function purgeDiagnosticScans() {
 
     const result = await prisma.diagnosticScan.deleteMany({
       where: {
-        retentionUntil: {
-          lte: cutoffDate
-        }
+        OR: [
+          { retentionUntil: { lte: cutoffDate } },
+          { retentionUntil: null, scannedAt: { lte: cutoffDate } }
+        ]
       }
     });
 
@@ -44,7 +45,7 @@ async function purgeDiagnosticScans() {
 }
 
 /**
- * Purge expired expert calls
+ * Purge expired expert calls (retentionUntil in the past, or no retentionUntil and createdAt past policy)
  */
 async function purgeExpertCalls() {
   try {
@@ -53,9 +54,10 @@ async function purgeExpertCalls() {
 
     const result = await prisma.expertCall.deleteMany({
       where: {
-        retentionUntil: {
-          lte: cutoffDate
-        }
+        OR: [
+          { retentionUntil: { lte: cutoffDate } },
+          { retentionUntil: null, createdAt: { lte: cutoffDate } }
+        ]
       }
     });
 
@@ -68,7 +70,7 @@ async function purgeExpertCalls() {
 }
 
 /**
- * Purge expired alerts
+ * Purge expired alerts (retentionUntil in the past, or no retentionUntil and createdAt past policy)
  */
 async function purgeAlerts() {
   try {
@@ -77,9 +79,10 @@ async function purgeAlerts() {
 
     const result = await prisma.alert.deleteMany({
       where: {
-        retentionUntil: {
-          lte: cutoffDate
-        }
+        OR: [
+          { retentionUntil: { lte: cutoffDate } },
+          { retentionUntil: null, createdAt: { lte: cutoffDate } }
+        ]
       }
     });
 
@@ -92,7 +95,7 @@ async function purgeAlerts() {
 }
 
 /**
- * Purge expired disputes
+ * Purge expired disputes (retentionUntil in the past, or no retentionUntil and createdAt past policy)
  */
 async function purgeDisputes() {
   try {
@@ -101,9 +104,10 @@ async function purgeDisputes() {
 
     const result = await prisma.dispute.deleteMany({
       where: {
-        retentionUntil: {
-          lte: cutoffDate
-        }
+        OR: [
+          { retentionUntil: { lte: cutoffDate } },
+          { retentionUntil: null, createdAt: { lte: cutoffDate } }
+        ]
       }
     });
 
@@ -116,7 +120,7 @@ async function purgeDisputes() {
 }
 
 /**
- * Purge expired support tickets
+ * Purge expired support tickets (retentionUntil in the past, or no retentionUntil and createdAt past policy)
  */
 async function purgeSupportTickets() {
   try {
@@ -125,9 +129,10 @@ async function purgeSupportTickets() {
 
     const result = await prisma.supportTicket.deleteMany({
       where: {
-        retentionUntil: {
-          lte: cutoffDate
-        }
+        OR: [
+          { retentionUntil: { lte: cutoffDate } },
+          { retentionUntil: null, createdAt: { lte: cutoffDate } }
+        ]
       }
     });
 

@@ -46,6 +46,7 @@ model User {
   dataRequests         DataRequest[]
   refreshTokens        RefreshToken[]
   auditLogs            AuditLog[]
+  anonymizedAt         DateTime?   // Set when user requested deletion (PII wiped)
 }
 
 model Subscription {
@@ -647,16 +648,17 @@ model ConsentLog {
 }
 
 model DataRequest {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String   // export | delete
-  status      String   @default("pending") // pending | processing | completed | failed
-  fulfilledAt DateTime?
-  exportUrl   String?  // For export requests: temporary download URL
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String   // export | delete
+  status       String   @default("pending") // pending | processing | completed | failed
+  fulfilledAt  DateTime?
+  exportUrl    String?  // For export requests: temporary download URL (optional)
+  exportData   Json?    // For export requests: structured user data (stored when completed)
   errorMessage String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   @@index([userId])
   @@index([type])
   @@index([status])

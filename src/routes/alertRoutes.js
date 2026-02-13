@@ -1,5 +1,5 @@
 const express = require('express');
-const { list } = require('../controllers/alertController');
+const { list, create } = require('../controllers/alertController');
 const { authenticate, requireUser } = require('../middleware/auth');
 
 const router = express.Router();
@@ -15,7 +15,27 @@ const router = express.Router();
  *     responses:
  *       200:
  *         description: List of alerts
+ *   post:
+ *     summary: Create alert (retentionUntil set for 3 months)
+ *     tags: [Alerts]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title]
+ *             properties:
+ *               title: { type: string }
+ *               message: { type: string }
+ *               type: { type: string }
+ *               vehicleId: { type: string }
+ *     responses:
+ *       201:
+ *         description: Alert created
  */
 router.get('/', authenticate, requireUser, list);
+router.post('/', authenticate, requireUser, create);
 
 module.exports = router;

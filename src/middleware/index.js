@@ -4,6 +4,7 @@ const { validate } = require('./validation');
 const { requireRole, requireAdmin, requireShopOwner, requireExpert, requireCustomer } = require('./rbac');
 const { auditLog } = require('./audit');
 const { apiLimiter, authLimiter, dataRequestLimiter } = require('./rateLimit');
+const { requireConsent } = require('./consent');
 
 module.exports = {
   errorHandler,
@@ -18,5 +19,6 @@ module.exports = {
   auditLog,
   apiLimiter,
   authLimiter,
-  dataRequestLimiter
+  dataRequestLimiter,
+  requireConsent
 };

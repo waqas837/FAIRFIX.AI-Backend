@@ -16,6 +16,7 @@ const {
 } = require('../controllers/caseController');
 const { createShipment } = require('../controllers/shipmentController');
 const { authenticate, requireUser } = require('../middleware/auth');
+const { requireConsent } = require('../middleware/consent');
 
 const router = express.Router();
 
@@ -89,7 +90,7 @@ router.post('/', authenticate, requireUser, create);
  *       200: { description: Case updated }
  *       400: { description: 'Invalid state – run steps in order; error message includes current state and what to run first' }
  */
-router.post('/:id/verify', authenticate, requireUser, verify);
+router.post('/:id/verify', authenticate, requireUser, requireConsent('diagnostic_data'), verify);
 /**
  * @swagger
  * /cases/{id}/install-window/propose:
@@ -155,7 +156,7 @@ router.post('/:id/install-window/accept', authenticate, requireUser, acceptInsta
  *     responses:
  *       201: { description: Decision lock created }
  */
-router.post('/:id/decision-lock', authenticate, requireUser, createDecisionLock);
+router.post('/:id/decision-lock', authenticate, requireUser, requireConsent('ai_summary'), createDecisionLock);
 /**
  * @swagger
  * /cases/{id}/shop-window-confirm:
@@ -220,7 +221,7 @@ router.post('/:id/install-complete', authenticate, requireUser, completeInstall)
  *     responses:
  *       200: { description: Case updated }
  */
-router.post('/:id/post-confirmation', authenticate, requireUser, postConfirmation);
+router.post('/:id/post-confirmation', authenticate, requireUser, requireConsent('post_repair_verification'), postConfirmation);
 /**
  * @swagger
  * /cases/{id}/exceptions:

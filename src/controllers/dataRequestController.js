@@ -1,8 +1,10 @@
 const { prisma } = require('../config/database');
+const { buildUserExport, anonymizeUser } = require('../services/dataExportService');
 
 /**
- * Create data request (export or delete)
- * POST /api/data-requests
+ * Create data request (export or delete) and fulfill it immediately.
+ * - Export: builds structured user data, stores it on the request, returns request + export in response.
+ * - Delete: anonymizes user PII and revokes refresh tokens, then marks request completed.
  */
 async function createDataRequest(req, res) {
   try {
@@ -16,7 +18,6 @@ async function createDataRequest(req, res) {
       });
     }
 
-    // Check for pending requests
     const pendingRequest = await prisma.dataRequest.findFirst({
       where: {
         userId,
@@ -28,32 +29,89 @@ async function createDataRequest(req, res) {
     if (pendingRequest) {
       return res.status(409).json({
         success: false,
-        error: { 
+        error: {
           message: `A ${type} request is already pending`,
           data: { request: pendingRequest }
         }
       });
     }
 
-    // Create data request
     const dataRequest = await prisma.dataRequest.create({
       data: {
         userId,
         type,
-        status: 'pending'
+        status: 'processing'
       }
     });
 
-    // For export requests, trigger async processing
-    // For delete requests, trigger async deletion
-    // This would typically be handled by a background job/queue
-    // For now, we'll mark it as processing
     if (type === 'export') {
-      // TODO: Trigger export job
-      // This would generate a ZIP file with all user data
-    } else if (type === 'delete') {
-      // TODO: Trigger deletion job
-      // This would anonymize or delete all user data
+      try {
+        const exportData = await buildUserExport(userId);
+        if (!exportData) {
+          await prisma.dataRequest.update({
+            where: { id: dataRequest.id },
+            data: { status: 'failed', errorMessage: 'User not found' }
+          });
+          return res.status(404).json({
+            success: false,
+            error: { message: 'User not found' }
+          });
+        }
+        const updated = await prisma.dataRequest.update({
+          where: { id: dataRequest.id },
+          data: {
+            status: 'completed',
+            fulfilledAt: new Date(),
+            exportData
+          }
+        });
+        return res.status(201).json({
+          success: true,
+          message: 'Export completed successfully',
+          data: {
+            request: updated,
+            export: exportData
+          }
+        });
+      } catch (err) {
+        console.error('Export error:', err);
+        await prisma.dataRequest.update({
+          where: { id: dataRequest.id },
+          data: { status: 'failed', errorMessage: err.message || 'Export failed' }
+        });
+        return res.status(500).json({
+          success: false,
+          error: { message: 'Export failed', details: err.message }
+        });
+      }
+    }
+
+    if (type === 'delete') {
+      try {
+        await anonymizeUser(userId);
+        const updated = await prisma.dataRequest.update({
+          where: { id: dataRequest.id },
+          data: {
+            status: 'completed',
+            fulfilledAt: new Date()
+          }
+        });
+        return res.status(201).json({
+          success: true,
+          message: 'Account data has been anonymized. You are now logged out.',
+          data: { request: updated }
+        });
+      } catch (err) {
+        console.error('Deletion/anonymization error:', err);
+        await prisma.dataRequest.update({
+          where: { id: dataRequest.id },
+          data: { status: 'failed', errorMessage: err.message || 'Deletion failed' }
+        });
+        return res.status(500).json({
+          success: false,
+          error: { message: 'Deletion failed', details: err.message }
+        });
+      }
     }
 
     res.status(201).json({
@@ -71,8 +129,7 @@ async function createDataRequest(req, res) {
 }
 
 /**
- * Get data request status
- * GET /api/data-requests/:id
+ * Get data request status (and export data when type=export and status=completed).
  */
 async function getDataRequest(req, res) {
   try {
@@ -82,7 +139,7 @@ async function getDataRequest(req, res) {
     const dataRequest = await prisma.dataRequest.findFirst({
       where: {
         id,
-        userId // Ensure user can only access their own requests
+        userId
       }
     });
 
@@ -93,10 +150,27 @@ async function getDataRequest(req, res) {
       });
     }
 
-    res.json({
+    const response = {
       success: true,
-      data: { request: dataRequest }
-    });
+      data: {
+        request: {
+          id: dataRequest.id,
+          type: dataRequest.type,
+          status: dataRequest.status,
+          fulfilledAt: dataRequest.fulfilledAt,
+          exportUrl: dataRequest.exportUrl,
+          errorMessage: dataRequest.errorMessage,
+          createdAt: dataRequest.createdAt,
+          updatedAt: dataRequest.updatedAt
+        }
+      }
+    };
+
+    if (dataRequest.type === 'export' && dataRequest.status === 'completed' && dataRequest.exportData) {
+      response.data.export = dataRequest.exportData;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Get data request error:', error);
     res.status(500).json({
@@ -107,8 +181,7 @@ async function getDataRequest(req, res) {
 }
 
 /**
- * List data requests for current user
- * GET /api/data-requests
+ * List data requests for current user.
  */
 async function listDataRequests(req, res) {
   try {
@@ -121,7 +194,17 @@ async function listDataRequests(req, res) {
 
     const dataRequests = await prisma.dataRequest.findMany({
       where,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        fulfilledAt: true,
+        exportUrl: true,
+        errorMessage: true,
+        createdAt: true,
+        updatedAt: true
+      }
     });
 
     res.json({

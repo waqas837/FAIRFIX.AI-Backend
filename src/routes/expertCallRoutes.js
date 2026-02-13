@@ -1,6 +1,7 @@
 const express = require('express');
 const { list, getById } = require('../controllers/expertCallController');
 const { authenticate, requireUser } = require('../middleware/auth');
+const { requireConsent } = require('../middleware/consent');
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ const router = express.Router();
  *       200:
  *         description: Expert call details
  */
-router.get('/', authenticate, requireUser, list);
-router.get('/:id', authenticate, requireUser, getById);
+router.get('/', authenticate, requireUser, requireConsent('call_recording'), list);
+router.get('/:id', authenticate, requireUser, requireConsent('call_recording'), getById);
 
 module.exports = router;

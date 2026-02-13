@@ -1,6 +1,7 @@
 const express = require('express');
 const { getById } = require('../controllers/scanController');
 const { authenticate, requireUser } = require('../middleware/auth');
+const { requireConsent } = require('../middleware/consent');
 
 const router = express.Router();
 
@@ -23,6 +24,6 @@ const router = express.Router();
  *       200:
  *         description: Scan details
  */
-router.get('/:id', authenticate, requireUser, getById);
+router.get('/:id', authenticate, requireUser, requireConsent('diagnostic_data'), getById);
 
 module.exports = router;

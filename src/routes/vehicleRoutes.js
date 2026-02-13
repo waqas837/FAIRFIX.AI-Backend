@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const { list, getById, create } = require('../controllers/vehicleController');
 const { listByVehicle, getLatest } = require('../controllers/scanController');
 const { authenticate, requireUser } = require('../middleware/auth');
+const { requireConsent } = require('../middleware/consent');
 
 /**
  * @swagger
@@ -133,7 +134,7 @@ router.post(
  *       200:
  *         description: Latest scan details
  */
-router.get('/:vehicleId/scans', authenticate, requireUser, listByVehicle);
-router.get('/:vehicleId/scans/latest', authenticate, requireUser, getLatest);
+router.get('/:vehicleId/scans', authenticate, requireUser, requireConsent('diagnostic_data'), listByVehicle);
+router.get('/:vehicleId/scans/latest', authenticate, requireUser, requireConsent('diagnostic_data'), getLatest);
 
 module.exports = router;

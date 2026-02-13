@@ -42,6 +42,13 @@ async function authenticate(req, res, next) {
         });
       }
 
+      if (user.email && user.email.startsWith('deleted-') && user.email.includes('@anonymized.')) {
+        return res.status(401).json({ 
+          success: false, 
+          error: { message: 'Account has been deleted' } 
+        });
+      }
+
       req.user = user;
       req.userId = user.id;
       next();

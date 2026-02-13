@@ -1,4 +1,34 @@
 const { prisma } = require('../config/database');
+const { getRetentionUntil } = require('../utils/retention');
+
+/**
+ * POST /alerts — create alert (sets retentionUntil for retention job; 3 months policy).
+ */
+async function create(req, res, next) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+    }
+    const { vehicleId, type, title, message } = req.body;
+    if (!title || typeof title !== 'string') {
+      return res.status(400).json({ success: false, error: { message: 'title is required' } });
+    }
+    const alert = await prisma.alert.create({
+      data: {
+        userId,
+        vehicleId: vehicleId || null,
+        type: type || null,
+        title: title.trim(),
+        message: message ? String(message).trim() : null,
+        retentionUntil: getRetentionUntil('alerts'),
+      },
+    });
+    res.status(201).json({ success: true, data: alert });
+  } catch (err) {
+    next(err);
+  }
+}
 
 /**
  * GET /alerts — list alerts for current user (optional ?read=, ?vehicleId=).
@@ -30,4 +60,4 @@ async function list(req, res, next) {
   }
 }
 
-module.exports = { list };
+module.exports = { list, create };
