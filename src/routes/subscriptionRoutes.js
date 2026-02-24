@@ -1,5 +1,5 @@
 const express = require('express');
-const { list, getById } = require('../controllers/subscriptionController');
+const { list, getById, create, cancel, getActive } = require('../controllers/subscriptionController');
 const { authenticate, requireUser } = require('../middleware/auth');
 
 const router = express.Router();
@@ -33,6 +33,9 @@ const router = express.Router();
  *         description: Subscription details
  */
 router.get('/', authenticate, requireUser, list);
+router.get('/active', authenticate, requireUser, getActive);
 router.get('/:id', authenticate, requireUser, getById);
+router.post('/', authenticate, requireUser, create);
+router.post('/:id/cancel', authenticate, requireUser, cancel);
 
 module.exports = router;

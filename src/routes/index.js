@@ -19,6 +19,8 @@ const consentRoutes = require('./consentRoutes');
 const dataRequestRoutes = require('./dataRequestRoutes');
 const vendorRoutes = require('./vendorRoutes');
 const shipmentRoutes = require('./shipmentRoutes');
+const obdRoutes = require('./obdRoutes');
+const webhookRoutes = require('./webhookRoutes');
 
 const router = express.Router();
 
@@ -47,6 +49,9 @@ router.use('/auth', authRoutes);
 const adminRoutes = require('./adminRoutes');
 router.use('/admin', adminRoutes);
 
+// Webhooks (public - no auth required)
+router.use('/webhooks', webhookRoutes);
+
 // Shipment carrier webhook (public - called by carrier)
 const { carrierExceptionWebhook } = require('../controllers/shipmentController');
 router.post('/shipments/webhook/carrier-exception', carrierExceptionWebhook);
@@ -71,5 +76,6 @@ router.use('/consent', consentRoutes);
 router.use('/data-requests', dataRequestRoutes);
 router.use('/vendor', vendorRoutes);
 router.use('/shipments', shipmentRoutes);
+router.use('/obd', obdRoutes);
 
 module.exports = router;

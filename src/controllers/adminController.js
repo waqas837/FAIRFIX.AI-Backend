@@ -404,6 +404,220 @@ async function getStats(req, res) {
   }
 }
 
+/**
+ * Get ledger entries (Admin only)
+ * GET /api/admin/ledger
+ */
+async function getLedger(req, res) {
+  try {
+    const { type, status, userId, expertId, limit = 100, offset = 0 } = req.query;
+
+    const where = {};
+    if (type) where.type = type;
+    if (status) where.status = status;
+    if (userId) where.userId = userId;
+    if (expertId) where.expertId = expertId;
+
+    const ledgerEntries = await prisma.ledger.findMany({
+      where,
+      take: parseInt(limit),
+      skip: parseInt(offset),
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const total = await prisma.ledger.count({ where });
+
+    res.json({
+      success: true,
+      data: {
+        ledgerEntries,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get ledger error:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'Internal server error', details: error.message }
+    });
+  }
+}
+
+/**
+ * Get expert payouts (Admin only)
+ * GET /api/admin/expert-payouts
+ */
+async function getExpertPayouts(req, res) {
+  try {
+    const { expertId, status, limit = 100, offset = 0 } = req.query;
+
+    const where = { type: 'expert_payout' };
+    if (expertId) where.expertId = expertId;
+    if (status) where.status = status;
+
+    const payouts = await prisma.ledger.findMany({
+      where,
+      take: parseInt(limit),
+      skip: parseInt(offset),
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const total = await prisma.ledger.count({ where });
+
+    res.json({
+      success: true,
+      data: {
+        payouts,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get expert payouts error:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'Internal server error', details: error.message }
+    });
+  }
+}
+
+/**
+ * Process refund (Admin only)
+ * POST /api/admin/refunds
+ */
+async function processRefund(req, res) {
+  try {
+    const { paymentIntentId, amountCents, reason } = req.body;
+
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Payment intent ID is required' }
+      });
+    }
+
+    const { processRefund: refundHelper } = require('../utils/stripeHelpers');
+    const refund = await refundHelper(paymentIntentId, amountCents, reason);
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'refund_processed',
+        resourceType: 'payment',
+        resourceId: paymentIntentId,
+        metadata: {
+          refundId: refund.id,
+          amountCents,
+          reason
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      data: { refund }
+    });
+  } catch (error) {
+    console.error('Process refund error:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'Internal server error', details: error.message }
+    });
+  }
+}
+
+/**
+ * Force close expert call (Admin only)
+ * POST /api/admin/expert-calls/:id/force-close
+ */
+async function forceCloseCall(req, res) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Reason is required' }
+      });
+    }
+
+    const { forceCloseCall: forceClose } = require('../utils/callStateMachine');
+    await forceClose(id, req.user.id, reason);
+
+    res.json({
+      success: true,
+      message: 'Call force closed successfully'
+    });
+  } catch (error) {
+    console.error('Force close call error:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'Internal server error', details: error.message }
+    });
+  }
+}
+
+/**
+ * Get call states (Admin only)
+ * GET /api/admin/call-states
+ */
+async function getCallStates(req, res) {
+  try {
+    const { state, limit = 100, offset = 0 } = req.query;
+
+    const where = {};
+    if (state) where.state = state;
+
+    const callStates = await prisma.callState.findMany({
+      where,
+      take: parseInt(limit),
+      skip: parseInt(offset),
+      orderBy: { transitionedAt: 'desc' },
+      include: {
+        expertCall: {
+          include: {
+            user: {
+              select: { id: true, email: true, firstName: true, lastName: true }
+            },
+            expert: {
+              select: { id: true, name: true, email: true }
+            }
+          }
+        }
+      }
+    });
+
+    const total = await prisma.callState.count({ where });
+
+    res.json({
+      success: true,
+      data: {
+        callStates,
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get call states error:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: 'Internal server error', details: error.message }
+    });
+  }
+}
+
 module.exports = {
   getAuditLogs,
   getUsers,
@@ -412,5 +626,10 @@ module.exports = {
   getDisputeById,
   getSupportTickets,
   getSupportTicketById,
-  getStats
+  getStats,
+  getLedger,
+  getExpertPayouts,
+  processRefund,
+  forceCloseCall,
+  getCallStates
 };
